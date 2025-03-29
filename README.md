@@ -47,7 +47,11 @@ username = 您的校园网账号
 password = 您的校园网密码
 operator = 中国联通
 ```
+
+```
 "中国联通"这里可选：校园网/中国移动/中国联通/中国电信
+```
+
 5. 运行程序：
 ```bash
 python netlogin4kewen_Net.py
