@@ -1,89 +1,117 @@
-# 江苏师范大学潘安湖校区(科文学院)校园网便捷登录器
-- 本校校园网登录略有繁杂，需要打开浏览器，输入网址，填写账号，密码，选择通道
-- 为了节省时间，遂开发本项目
-- 从点击打开.py到完成登录，最快仅需要0.4秒
-- 本项目使用Python构建，主要通过模拟HTTP请求实现校园网认证过程，以下是其核心原理和实现方式：
+# NL4KW 校园网登录系统
 
-## 基本原理
-1. **认证机制**：程序通过向校园网认证服务器(10.110.6.251)发送特定格式的HTTP请求，模拟用户在Web页面上的登录操作。
-2. **运营商区分**：通过在用户名后添加特定后缀(@cmcc/@unicom/@telecom)来区分不同运营商的认证通道。
-3. **会话维持**：使用requests.Session对象保持HTTP会话状态，便于后续状态检查。
-4. **自动重连**：定期检测网络连接状态，在断网时自动重新发起认证请求。
+NL4KW 是同一套校园网登录逻辑的多端实现，面向 Windows 普通使用、Windows 自动账号轮转、Windows 手动模拟登录，以及 Linux/OpenWrt 直接发包登录。
 
-## 技术实现
-1. **配置管理**：
-   - 使用configparser库读写INI格式的配置文件
-   - 支持首次运行自动创建配置模板
-   - 实现账号密码和运营商信息的持久化存储
-1. **网络操作**：
-   - 使用socket库获取本机IP地址
-   - 通过requests库构造并发送HTTP认证请求
-   - 解析JSON格式的服务器响应判断认证结果
-1. **WiFi检测**：
-   - 利用pywifi库获取当前连接的WiFi网络名称
-   - 判断是否连接到指定的校园网WiFi(KWXY_Stu)
-1. **用户界面**：
-   - 使用win32gui/win32api实现窗口置顶和大小控制
-   - 通过ctypes设置控制台窗口标题
-   - 实现账号信息脱敏显示保护隐私
-1. **异常处理**：
-   - 完善的异常捕获机制确保程序稳定运行
-   - 网络错误、解析错误等情况下的友好提示
-   - 支持多次重试提高认证成功率
-1. **跨平台兼容**：
-   - 针对Windows/Unix系统实现不同的输入检测方法
-   - 兼容Python脚本和打包后的exe运行环境
-这个程序本质上是通过分析校园网认证系统的通信协议，然后使用编程方式自动完成认证过程，避免了手动登录的繁琐，并通过定时检测确保网络连接的持续可用。
+认证网关默认地址为 `http://10.110.6.251`。Windows 端 exe 已放在 `dist_exe` 目录，可直接作为 Release 附件发布。
 
+## 文件说明
 
-## 如何使用？
-1. 确保已安装Python 3.6+
-2. 安装依赖库：
-```bash
-pip install requests pywifi pywin32
-```
-3. 首次运行会自动创建`config.ini`配置文件
-4. 用记事本打开`config.ini`填写以下信息：
+| 文件 | 对应版本 | 说明 |
+| --- | --- | --- |
+| `NL4KW_Win.py` | Windows 普通版 | 读取 `config.ini` 中的单个账号，通过认证接口直接发包登录，并支持 WiFi 检查和自动重连监控。 |
+| `NL4KW_Win_auto.py` | Windows 自动账号轮转版 | 读取 `config_auto.ini` 中的多个账号、密码、运营商组合，启动后随机轮转尝试登录。 |
+| `NL4KW_Win_Emulator.py` | Windows 手动模拟版 | 记录网页元素坐标，使用鼠标和键盘模拟网页登录流程。 |
+| `NL4KW_Linux.sh` | Linux/OpenWrt 端 | 在脚本内配置账号，通过 `curl`、`wget` 或 `uclient-fetch` 直接发包认证。 |
+| `dist_exe/` | Windows exe 成品 | 已打包好的三个 Windows 可执行文件。 |
+| `spec/` | PyInstaller 配置 | 记录三个 Windows exe 的打包参数，便于后续复现构建。 |
+| `RELEASE.md` | 发布说明 | 可作为 Release 页面正文使用。 |
+
+## Windows exe
+
+| exe | 对应功能 | 大小 |
+| --- | --- | --- |
+| `dist_exe/NL4KW_Win.exe` | Windows 普通版 | 10.42 MB |
+| `dist_exe/NL4KW_Win_auto.exe` | Windows 自动账号轮转版 | 9.87 MB |
+| `dist_exe/NL4KW_Win_Emulator.exe` | Windows 手动模拟版 | 13.38 MB |
+
+### NL4KW_Win.exe
+
+普通版适合单用户、单账号场景。
+
+首次运行时，如果 exe 同目录不存在 `config.ini`，程序会自动创建配置模板并退出。填写后再次运行即可登录。
+
+`config.ini` 示例：
+
 ```ini
 [LOGIN]
-username = 您的校园网账号
-password = 您的校园网密码
+username = 你的账号
+password = 你的密码
 operator = 中国联通
 ```
 
-```
-"中国联通"这里可选：校园网/中国移动/中国联通/中国电信
+`operator` 可选值：
+
+| 名称 | 说明 |
+| --- | --- |
+| `校园网` | 不追加运营商后缀 |
+| `中国移动` | 追加 `@cmcc` |
+| `中国联通` | 追加 `@unicom` |
+| `中国电信` | 追加 `@telecom` |
+
+### NL4KW_Win_auto.exe
+
+自动账号轮转版适合多账号备用登录场景。
+
+首次运行时，如果 exe 同目录不存在 `config_auto.ini`，程序会自动创建两个账号位模板并退出。填写后再次运行，程序会随机打乱有效账号顺序并逐个尝试登录。
+
+`config_auto.ini` 示例：
+
+```ini
+[ACCOUNT_1]
+username = 示例账号1
+password = 示例密码1
+operator = 中国联通
+
+[ACCOUNT_2]
+username = 示例账号2
+password = 示例密码2
+operator = 中国移动
 ```
 
-5. 运行程序：
-```bash
-python netlogin4kewen_Net.py
+如果某个账号位的账号或密码为空，或仍保持 `示例账号1`、`示例密码1`、`示例账号2`、`示例密码2` 这类默认示例值，程序不会把它计入可用账号。需要更多账号时，可以继续添加 `[ACCOUNT_3]`、`[ACCOUNT_4]`。
+
+### NL4KW_Win_Emulator.exe
+
+手动模拟版适合直接发包不可用、需要模拟网页登录页面的场景。
+
+首次运行会进入坐标标定流程，按提示点击账号框、密码框、运营商选项和登录按钮后按 `Alt` 记录坐标。配置会保存到 exe 同目录的 `login_config.json`。
+
+页面布局、浏览器缩放、显示器分辨率变化后，原坐标可能失效。删除 `login_config.json` 后再次运行即可重新标定。
+
+## Linux/OpenWrt 端
+
+编辑 `NL4KW_Linux.sh` 顶部的账号配置：
+
+```sh
+USERNAME="YOUR_USERNAME"
+PASSWORD="YOUR_PASSWORD"
+OPERATOR_NAME="中国联通"
 ```
 
-## 打包为EXE
-使用PyInstaller打包：
-```bash
-pip install pyinstaller
-pyinstaller --onefile --windowed netlogin4kewen_Net.py
+运行：
+
+```sh
+sh NL4KW_Linux.sh
 ```
+
+脚本会自动判断到认证服务器时使用的本机 IPv4 地址，并用同一套认证参数直接发包。
+
+## 打包说明
+
+三个 Windows exe 使用 PyInstaller `onefile + console` 打包。为了控制体积，打包时排除了 `numpy`、`pandas`、`matplotlib`、`scipy`、`PyQt/PySide` 等无关模块；模拟版额外排除了 `cv2`，避免被 `pyautogui` 的可选截图链路拉大体积。
+
+当前构建环境：
+
+| 项目 | 值 |
+| --- | --- |
+| Python | `E:\Python312\python.exe` |
+| PyInstaller | `6.16.0` |
+| 系统 | Windows 11 64-bit |
 
 ## 注意事项
-1. 请确保连接到校园网WiFi（KWXY_Stu）
-2. 运营商选择必须与账号类型匹配
-3. 程序需要管理员权限获取网络信息
-4. 密码以明文存储在config.ini中，请注意保护
 
-## 常见问题
-Q: 登录失败怎么办？
-A: 请检查：
-- 是否连接到校园网WiFi
-- 账号密码是否正确
-- 运营商选择是否匹配账号类型
+请只在你有权限使用的校园网环境中运行本项目。
 
-Q: 窗口无法置顶？
-A: 请以管理员身份运行程序
+Windows 安全软件可能会对 PyInstaller onefile 程序、键盘监听或鼠标模拟能力给出提示。普通版和自动轮转版不需要键鼠模拟；手动模拟版会使用 `pyautogui` 和 `keyboard` 完成点击与按键检测。
 
-## :warning: 免责声明
-- 本代码遵循 [GPL-3.0 License](https://github.com/Mirrorium227/NetLogin4Kewen/blob/main/LICENSE) 协议，允许**开源/免费使用和引用/修改/衍生代码的开源/免费使用**，不允许**修改和衍生的代码作为闭源的商业软件发布和销售**，禁止**使用本代码盈利**，以此代码为基础的程序**必须**同样遵守 [GPL-3.0 License](https://github.com/Mirrorium227/NetLogin4Kewen/blob/main/LICENSE) 协议
-- 本代码仅用于**学习讨论**，禁止**用于盈利**
-- 他人或组织使用本代码进行的任何**违法行为**与本人无关
+Release 发布时建议同时上传三个 exe，并把 `RELEASE.md` 中的 SHA256 校验值放入发布说明，便于下载后核对文件完整性。

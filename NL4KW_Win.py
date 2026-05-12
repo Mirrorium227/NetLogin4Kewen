@@ -1,3 +1,14 @@
+"""
+NL4KW 校园网登录系统 - Windows 普通版
+
+用途：
+1. 读取同目录 config.ini 中的单个账号配置。
+2. 通过校园网认证接口直接发包登录。
+3. 检查 WiFi、登录状态，并可进入自动重连监控。
+
+适用环境：Windows + Python，依赖 requests / pywifi / pywin32。
+"""
+
 import requests
 import json
 import time
@@ -13,26 +24,53 @@ import sys
 import pywifi
 from pywifi import const
 
+
+APP_NAME = "NL4KW 校园网登录系统"
+APP_EDITION = "Windows 普通版"
+TARGET_SSID = "KWXY_Stu"
+
+
+def print_banner():
+    """统一输出启动横幅，便于四个实现保持同一套系统观感。"""
+    print("=" * 56)
+    print(f"[系统] {APP_NAME}")
+    print(f"[系统] 当前版本：{APP_EDITION}")
+    print("=" * 56)
+
+
+def mask_username(username):
+    """日志中只展示账号首尾，避免控制台泄露完整账号。"""
+    if len(username) <= 4:
+        return "*" * len(username)
+    return username[:2] + "*" * (len(username) - 4) + username[-2:]
+
+
 class NetLogin:
     def __init__(self):
+        # 校园网认证网关地址，后续状态检查和登录发包都会基于它构造 URL。
         self.base_url = "http://10.110.6.251"
-        # 添加运营商映射字典
+
+        # 运营商后缀必须与认证服务端要求一致，拼接到 user_account 字段后。
         self.operator_map = {
             "校园网": "",
             "中国移动": "@cmcc",
             "中国联通": "@unicom",
             "中国电信": "@telecom"
         }
+
+        # 模拟浏览器请求头，避免认证网关拒绝非浏览器请求。
         self.headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
             "Accept": "*/*",
             "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
             "Referer": "http://10.110.6.251/",
         }
+
+        # 初始化顺序：配置 -> HTTP 会话 -> 本机 IP -> 控制台窗口。
         self.config = self.load_config()
         self.session = requests.Session()
         self.ip_address = self.get_local_ip()
-        self.keep_window_on_top()  # 添加窗口控制
+        self.keep_window_on_top()
     
     def keep_window_on_top(self):
         """保持终端窗口在最顶层并设置位置"""
@@ -56,22 +94,20 @@ class NetLogin:
                                 win32con.SWP_SHOWWINDOW)
             
             # 设置窗口标题
-            ctypes.windll.kernel32.SetConsoleTitleW("校园网自动登录程序")
+            ctypes.windll.kernel32.SetConsoleTitleW(f"{APP_NAME} - {APP_EDITION}")
 
     def get_local_ip(self):
         """获取本机IP地址"""
         try:
-            # 创建一个UDP套接字
+            # UDP connect 不会真的发送数据，只用于让系统选择到认证网关的出接口。
             s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-            # 连接到一个外部服务器（实际不会建立连接）
             s.connect(("10.110.6.251", 80))
-            # 获取本地IP地址
             ip = s.getsockname()[0]
             s.close()
-            print(f"获取到本机IP: {ip}")
+            print(f"[信息] 获取到本机IP: {ip}")
             return ip
         except Exception as e:
-            print(f"获取IP地址失败: {str(e)}")
+            print(f"[错误] 获取IP地址失败: {str(e)}")
             return "0.0.0.0"
 
     def load_config(self):
@@ -129,8 +165,8 @@ class NetLogin:
             password = config["LOGIN"]["password"]
             operator = config["LOGIN"]["operator"]
             
-            # 只显示用户名的前两位和后两位，中间用星号代替
-            masked_username = username[:2] + '*' * (len(username)-4) + username[-2:]
+            # 控制台只显示脱敏账号，配置文件内仍保存完整账号。
+            masked_username = mask_username(username)
             print(f"[信息] 读取到配置: 用户名={masked_username}, 运营商={operator}")
             
             if not username.strip() or not password.strip():
@@ -149,10 +185,10 @@ class NetLogin:
             url = f"{self.base_url}:801/eportal/?c=ACSetting&a=checkScanIP"
             response = self.session.get(url, headers=self.headers)
             
-            print(f"状态检查响应: {response.text[:200]}")
+            print(f"[调试] 状态检查响应: {response.text[:200]}")
             return {"result": 0}  # 返回默认值
         except Exception as e:
-            print(f"获取challenge失败: {str(e)}")
+            print(f"[错误] 获取challenge失败: {str(e)}")
             return {"result": 0}
 
     def login(self, max_retries=3):
@@ -184,15 +220,17 @@ class NetLogin:
                     
                 print(f"[系统] 正在构建认证数据包...")
                 
-                # 构造登录URL和参数
+                # 构造认证请求。认证网关要求参数放在 query string 中。
                 login_url = f"{self.base_url}:801/eportal/"
                 query_params = {
                     "c": "Portal",
                     "a": "login",
                     "callback": "dr1003",
                     "login_method": "1",
+                    # user_account 的格式固定为 ",0,账号+运营商后缀"。
                     "user_account": f",0,{username}{operator}",
                     "user_password": password,
+                    # wlan_user_ip 必须是校园网网段下本机地址，否则可能认证到错误网卡。
                     "wlan_user_ip": self.ip_address,
                     "wlan_user_ipv6": "",
                     "wlan_user_mac": "000000000000",
@@ -219,9 +257,9 @@ class NetLogin:
                     print(f"[系统] 认证请求处理完成 (用时: {elapsed_time}ms)")
                     
                     if "dr1003({\"result\":\"1\"" in response.text:
-                        print(f"\n[成功] 网络认证成功！")
+                        print(f"\n[成功] 网络认证成功")
                         print(f"[信息] 运营商: {operator_name}")
-                        print(f"[信息] 用户名: {username[:2]}{'*' * (len(username)-4)}{username[-2:]}")
+                        print(f"[信息] 用户名: {mask_username(username)}")
                         return True
                     else:
                         print("\n[失败] 认证未通过")
@@ -275,7 +313,7 @@ class NetLogin:
             
             if iface.status() == const.IFACE_CONNECTED:
                 ssid = iface.scan_results()[0].ssid.strip()
-                is_target = ssid == "KWXY_Stu"
+                is_target = ssid == TARGET_SSID
                 return is_target, ssid
             return False, "未连接到任何WiFi"
         except Exception as e:
@@ -311,23 +349,23 @@ class NetLogin:
 
 def main():
     """主函数"""
-    print("校园网自动登录程序启动...")
+    print_banner()
     
     login_client = NetLogin()
     
     # 首先检查WiFi连接
     is_target_wifi, current_ssid = login_client.check_wifi_ssid()
     if not is_target_wifi:
-        print(f"\n[警告] 当前连接的WiFi不是校园网(KWXY_Stu)")
+        print(f"\n[警告] 当前连接的WiFi不是校园网({TARGET_SSID})")
         print(f"[信息] 当前WiFi: {current_ssid}")
-        choice = input("是否继续运行程序？(y/n): ")
+        choice = input("[输入] 是否继续运行程序？(y/n): ")
         if choice.lower() != 'y':
             print("[系统] 程序已终止")
             return
     
     # 检查当前是否已登录
     if login_client.check_status():
-        print("已经处于登录状态！")
+        print("[信息] 已经处于登录状态")
         try:
             # 已登录状态直接进入自动重连监控
             print("\n[系统] 正在启动自动重连监控...")
