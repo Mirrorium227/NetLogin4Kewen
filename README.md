@@ -115,3 +115,5 @@ sh NL4KW_Linux.sh
 Windows 安全软件可能会对 PyInstaller onefile 程序、键盘监听或鼠标模拟能力给出提示。普通版和自动轮转版不需要键鼠模拟；手动模拟版会使用 `pyautogui` 和 `keyboard` 完成点击与按键检测。
 
 Release 发布时建议同时上传三个 exe，并把 `RELEASE.md` 中的 SHA256 校验值放入发布说明，便于下载后核对文件完整性。
+
+修改了代码。本条仅供测试
