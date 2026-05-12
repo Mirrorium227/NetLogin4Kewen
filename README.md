@@ -116,4 +116,4 @@ Windows 安全软件可能会对 PyInstaller onefile 程序、键盘监听或鼠
 
 Release 发布时建议同时上传三个 exe，并把 `RELEASE.md` 中的 SHA256 校验值放入发布说明，便于下载后核对文件完整性。
 
-修改了代码。本条仅供测试
+修改了代码
